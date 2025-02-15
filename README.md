@@ -5,5 +5,5 @@
 
  It's recommened to compile the sources with NetBeans
 
-
+ [Here](https://github.com/user-attachments/files/18810077/AuthService.zip) can you download an precompiled package.
  To run this service, you must use jre17 or higher.
