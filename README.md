@@ -1,5 +1,5 @@
 # AuthService
- This is the SASL Auth Service, to made newserv ready to use SASL and overrides the AUTH command. 
+ This is the SASL Auth Service, to made newserv ready to use SASL and overrides the AUTH command, recommened for external registration on webinterfaces. 
   
  It needed a working pgsql connection to work.
 
