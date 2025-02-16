@@ -6,12 +6,13 @@
 {"name":"servername","value":"authserv.midiandmore.net"},
 {"name":"description","value":"MidiAndMore AuttServ"},
 {"name":"identd","value":"authserv"},
-{"name":"numeric","value":"ST"},
+{"name":"numeric","value":"SU"},
 {"name":"debug","value":"true"},
 {"name":"reg_host","value":".users.midiandmore.net"},
 {"name":"db","value":"newserv"},
 {"name":"dbuser","value":"newserv"},
 {"name":"dbpassword","value":"password"},
 {"name":"dbhost","value":"localhost"},
-{"name":"dbssl","value":"false"}
+{"name":"dbssl","value":"false"},
+{"name":"network","value":"MidiAndMore.Net"}
 ]

@@ -28,6 +28,20 @@ import org.apache.commons.codec.digest.DigestUtils;
 public class SocketThread implements Runnable, Software {
 
     /**
+     * @return the authed
+     */
+    public HashMap<String, String> getAuthed() {
+        return authed;
+    }
+
+    /**
+     * @param authed the authed to set
+     */
+    public void setAuthed(HashMap<String, String> authed) {
+        this.authed = authed;
+    }
+
+    /**
      * @return the nick
      */
     public String getNick() {
@@ -96,7 +110,7 @@ public class SocketThread implements Runnable, Software {
     public void setIp(byte[] ip) {
         this.ip = ip;
     }
-
+    
     private Thread thread;
     private AuthServ mi;
     private Socket socket;
@@ -109,18 +123,20 @@ public class SocketThread implements Runnable, Software {
     private String identd;
     private String servername;
     private String description;
+    private HashMap<String, String> authed;
     private byte[] ip;
     private boolean reg;
-
+    
     public SocketThread(AuthServ mi) {
         setMi(mi);
+        setAuthed(new HashMap<>());
         (thread = new Thread(this)).start();
     }
-
+    
     protected void handshake(String nick, String password, String servername, String description, String numeric, String identd) {
         System.out.println("Starting handshake...");
         sendText("PASS :%s", password);
-        sendText("SERVER %s %d %d %d J10 %s]]] :%s", servername, 1, time(), time(), numeric, description);
+        sendText("SERVER %s %d %d %d J10 %s]]] +hs6n :%s", servername, 1, time(), time(), numeric, description);
         var ia = getSocket().getInetAddress().getHostAddress();
         var li = String.valueOf(ipToInt(ia)).getBytes();
         setServername(servername);
@@ -148,14 +164,14 @@ public class SocketThread implements Runnable, Software {
             Integer.parseInt(addrArray[2]),
             Integer.parseInt(addrArray[3])
         };
-
+        
         int result = ((num[0] & 255) << 24);
         result = result | ((num[1] & 255) << 16);
         result = result | ((num[2] & 255) << 8);
         result = result | (num[3] & 255);
         return result;
     }
-
+    
     protected void sendText(String text, Object... args) {
         getPw().println(text.formatted(args));
         getPw().flush();
@@ -163,53 +179,99 @@ public class SocketThread implements Runnable, Software {
             System.out.printf("DEBUG sendText: %s\n", text.formatted(args));
         }
     }
-
+    
     protected void parseLine(String text) {
-        var p = getMi().getConfig().getConfigFile();
-        text = text.trim();
-        var elem = text.split(" ");
-        if (text.startsWith("SERVER")) {
-            setServerNumeric(text.split(" ")[6].substring(0, 1));
-            System.out.println("Getting SERVER response...");
-        } else if (getServerNumeric() != null) {
-            if (elem[1].equals("EB")) {
-                sendText("%s EA", getNumeric());
-                System.out.println("Handshake complete...");
-                System.out.println("Joining 1 channel...");
-                joinChannel("#twilightzone");
-                System.out.println("Channels joined...");
-                System.out.println("Successfully connected...");
-            } else if (elem[1].equals("G")) {
-                sendText("%s Z %s", getNumeric(), text.substring(5));
-            } else if (elem[1].equals("P")) {
-                StringBuilder sb = new StringBuilder();
-                for (int i = 3; i < elem.length; i++) {
-                    sb.append(elem[i]);
-                    sb.append(" ");
-                }
-                var command = sb.toString().trim();
-                if (command.startsWith(":")) {
-                    command = command.substring(1);
-                }
-                var nick = elem[0];
-                var auth = command.split(" ");
-                var nickname = auth[1];
-                var account = auth[2];
-                var password = auth[3];
-                if (auth.length == 4 && auth[0].equalsIgnoreCase("SASL") && !password.isBlank()) {
-                    if (getMi().getDb().isRegistered(account, password)) {
-                        sendText("%s AC %s %s %s %s", getNumeric(), nick, account, getMi().getDb().getTimestamp(nickname), getMi().getDb().getId(nickname));
-                        sendText("%s AUTHENTICATE %s SUCCCESS %s %s", getNumeric(), nick, nickname, account);
+        try {
+            var p = getMi().getConfig().getConfigFile();
+            text = text.trim();
+            var elem = text.split(" ");
+            if (text.startsWith("SERVER")) {
+                setServerNumeric(text.split(" ")[6].substring(0, 1));
+                System.out.println("Getting SERVER response...");
+            } else if (getServerNumeric() != null) {
+                if (elem[1].equals("N") && elem.length > 4) {
+                    var priv = elem[7].contains("r");
+                    var hidden = elem[7].contains("h");
+                    String acc = null;
+                    String nick = null;
+                    if (elem[8].contains(":")) {
+                        acc = elem[8].split(":", 2)[0];
+                        if (hidden) {
+                            nick = elem[11];
+                        } else {
+                            nick = elem[10];
+                        }
                     } else {
-                        sendText("%s AUTHENTICATE %s NOTYOU %s %s", getNumeric(), nick, nickname, account);                        
+                        acc = elem[8];
+                        if (hidden) {
+                            nick = elem[11];
+                        } else {
+                            nick = elem[10];
+                        }
                     }
-                } else {
-                    sendText("%sAAA AUTHENTICATE %s PARAM %s", getNumeric(), nick, nickname);
-                }
+                    if (!acc.isBlank() && nick.length() == 5 && !acc.equalsIgnoreCase("-")) {
+                        getAuthed().put(nick, acc);
+                    }
+                } else if (elem[1].equals("EB")) {
+                    sendText("%s EA", getNumeric());
+                    System.out.println("Handshake complete...");
+                    System.out.println("Joining 1 channel...");
+                    joinChannel("#twilightzone");
+                    System.out.println("Channels joined...");
+                    System.out.println("Successfully connected...");
+                } else if (elem[1].equals("G")) {
+                    sendText("%s Z %s", getNumeric(), text.substring(5));
+                } else if (elem[1].equals("P")) {
+                    StringBuilder sb = new StringBuilder();
+                    for (int i = 3; i < elem.length; i++) {
+                        sb.append(elem[i]);
+                        sb.append(" ");
+                    }
+                    var command = sb.toString().trim();
+                    if (command.startsWith(":")) {
+                        command = command.substring(1);
+                    }
+                    var nick = elem[0];
+                    var target = elem[2];
+                    var auth = command.split(" ");
+                    var server = getMi().getConfig().getConfigFile().getProperty("nick") + "@" + getMi().getConfig().getConfigFile().getProperty("servername");
+                    var network = getMi().getConfig().getConfigFile().getProperty("network");
+                    if (auth.length == 4 && auth[0].equalsIgnoreCase("SASL") && !getAuthed().containsKey(nick)) {
+                        if (auth[3].isBlank()) {
+                            sendText("%sAAA AUTHENTICATE %s PARAM %s", getNumeric(), nick, auth[1]);
+                        } else if (getMi().getDb().isRegistered(auth[2], auth[3])) {
+                            getAuthed().put(nick, auth[2]);
+                            sendText("%s AC %s %s %s %s", getNumeric(), nick, auth[2], getMi().getDb().getTimestamp(auth[2]), getMi().getDb().getId(auth[2]));
+                            sendText("%s AUTHENTICATE %s SUCCESS %s %s", getNumeric(), nick, auth[1], auth[2]);
+                        } else {
+                            sendText("%s AUTHENTICATE %s NOTYOU %s %s", getNumeric(), nick, auth[2], auth[3]);
+                        }
+                    } else if (auth.length == 3 && auth[0].equalsIgnoreCase("AUTH") && target.equalsIgnoreCase(server) && !getAuthed().containsKey(nick)) {
+                        if (getMi().getDb().isRegistered(auth[1], auth[2])) {
+                            getAuthed().put(nick, auth[1]);
+                            sendText("%s AC %s %s %s %s", getNumeric(), nick, auth[1], getMi().getDb().getTimestamp(auth[1]), getMi().getDb().getId(auth[1]));
+                            sendText("%sAAA O %s :You are now authed as %s.", getNumeric(), nick, auth[1]);
+                            sendText("%sAAA O %s :Remember: NO-ONE from %s will ever ask for your password.  NEVER send your password to ANYONE except %s", getNumeric(), nick, network, server);
+                        } else {
+                            sendText("%sAAA O %s :Wrong password or username.", getNumeric(), nick);
+                        }
+                    } else if (getAuthed().containsKey(nick)) {
+                        sendText("%sAAA O %s :%s is already authed.", getNumeric(), nick, auth[1]);
+                    } else {
+                        sendText("%sAAA O %s :%s unkonwn command.", getNumeric(), nick, auth[0]);                        
+                    }
+                } else if (elem[1].equals("Q") || elem[1].equals("D")) {
+                    var nick = elem[1].equals("Q") ? elem[0] : elem[2];
+                    if (getAuthed().containsKey(nick)) {
+                        getAuthed().remove(nick);
+                    }
+                }                
             }
+        } catch (Exception e) {
+            e.printStackTrace();
         }
     }
-
+    
     private boolean isNotice(String nick) {
         if (!nick.isBlank()) {
             var flags = getMi().getDb().getFlags(nick);
@@ -217,7 +279,7 @@ public class SocketThread implements Runnable, Software {
         }
         return true;
     }
-
+    
     private boolean isPrivileged(int flags) {
         if (!nick.isBlank()) {
             var oper = isOper(flags);
@@ -231,7 +293,7 @@ public class SocketThread implements Runnable, Software {
         }
         return false;
     }
-
+    
     private boolean isPrivileged(String nick) {
         if (!nick.isBlank()) {
             var flags = getMi().getDb().getFlags(nick);
@@ -246,76 +308,76 @@ public class SocketThread implements Runnable, Software {
         }
         return false;
     }
-
+    
     private boolean isNoInfo(int flags) {
         return flags == 0;
     }
-
+    
     private boolean isInactive(int flags) {
         return (flags & QUFLAG_INACTIVE) != 0;
     }
-
+    
     private boolean isGline(int flags) {
         return (flags & QUFLAG_GLINE) != 0;
     }
-
+    
     private boolean isNotice(int flags) {
         return (flags & QUFLAG_NOTICE) != 0;
     }
-
+    
     private boolean isSuspended(int flags) {
         return (flags & QUFLAG_SUSPENDED) != 0;
     }
-
+    
     private boolean isOper(int flags) {
         return (flags & QUFLAG_OPER) != 0;
     }
-
+    
     private boolean isDev(int flags) {
         return (flags & QUFLAG_DEV) != 0;
     }
-
+    
     private boolean isProtect(int flags) {
         return (flags & QUFLAG_PROTECT) != 0;
     }
-
+    
     private boolean isHelper(int flags) {
         return (flags & QUFLAG_HELPER) != 0;
     }
-
+    
     private boolean isAdmin(int flags) {
         return (flags & QUFLAG_ADMIN) != 0;
     }
-
+    
     private boolean isInfo(int flags) {
         return (flags & QUFLAG_INFO) != 0;
     }
-
+    
     private boolean isDelayedGline(int flags) {
         return (flags & QUFLAG_DELAYEDGLINE) != 0;
     }
-
+    
     private boolean isNoAuthLimit(int flags) {
         return (flags & QUFLAG_NOAUTHLIMIT) != 0;
     }
-
+    
     private boolean isCleanupExempt(int flags) {
         return (flags & QUFLAG_CLEANUPEXEMPT) != 0;
     }
-
+    
     private boolean isStaff(int flags) {
         return (flags & QUFLAG_STAFF) != 0;
     }
-
+    
     private void joinChannel(String channel) {
         sendText("%sAAA J %s", getNumeric(), channel);
         sendText("%s M %s +o %sAAA", getNumeric(), channel, getNumeric());
     }
-
+    
     private long time() {
         return System.currentTimeMillis() / 1000;
     }
-
+    
     @Override
     public void run() {
         System.out.println("Connecting to server...");
@@ -478,5 +540,5 @@ public class SocketThread implements Runnable, Software {
     public void setReg(boolean reg) {
         this.reg = reg;
     }
-
+    
 }
